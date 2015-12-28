@@ -39,7 +39,7 @@ class BurpExtender(IBurpExtender, IScannerInsertionPointProvider):
         callbacks = this_callbacks
         self._helpers = callbacks.getHelpers()
 
-        callbacks.setExtensionName("ActiveScan3PLus")
+        callbacks.setExtensionName("ActiveScan3Plus")
 
         # Register host attack components
         host = HostAttack(callbacks)
