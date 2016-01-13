@@ -22,6 +22,7 @@ try:
     import time
     from string import Template
     from cgi import escape
+    from java.net import URL
 
     from burp import IBurpExtender, IScannerInsertionPointProvider, IScannerInsertionPoint, IParameter, IScannerCheck, IScanIssue
     import jarray
@@ -29,7 +30,7 @@ except ImportError:
     print "Failed to load dependencies. This issue may be caused by using the unstable Jython 2.7 beta."
 
 
-version = "1.0"
+version = "1.1"
 callbacks = None
 
 
@@ -39,7 +40,7 @@ class BurpExtender(IBurpExtender, IScannerInsertionPointProvider):
         callbacks = this_callbacks
         self._helpers = callbacks.getHelpers()
 
-        callbacks.setExtensionName("ActiveScan3Plus")
+        callbacks.setExtensionName("ActiveScan3PLus")
 
         # Register host attack components
         host = HostAttack(callbacks)
@@ -56,6 +57,10 @@ class BurpExtender(IBurpExtender, IScannerInsertionPointProvider):
         callbacks.registerScannerCheck(PhpPregArray(callbacks))
 
 	callbacks.registerScannerCheck(UTF8Xss(callbacks))
+	
+	callbacks.registerScannerCheck(PhpExtract(callbacks))
+	
+	callbacks.registerScannerCheck(CheckTempFiles(callbacks))
 
 	callbacks.registerScannerInsertionPointProvider(self)
 
@@ -152,6 +157,72 @@ class InsertionPoint_Drupal(IScannerInsertionPoint):
     def getInsertionPointType(self):
         return INS_EXTENSION_PROVIDED
 
+# Check the temporary files/source code disclosure
+
+class CheckTempFiles(IScannerCheck):
+    def __init__(self, callbacks):
+        self._helpers = callbacks.getHelpers()
+        self._done = getIssues('Source code disclosure')
+	self._payloads = ["~","_ORIG","_orig","_old",".tar",".rar",".zip",".txt",".old",".bak",".tar.gz",".bck"]
+
+    def doActiveScan(self, basePair, insertionPoint):
+        if self._helpers.analyzeRequest(basePair.getRequest()).getMethod() == "GET":
+                method = IParameter.PARAM_URL
+        else:
+                method = IParameter.PARAM_BODY
+
+	path = self._helpers.analyzeRequest(basePair).getUrl().getPath()
+        port = self._helpers.analyzeRequest(basePair).getUrl().getPort()
+        proto = self._helpers.analyzeRequest(basePair).getUrl().getProtocol()
+        hostname = self._helpers.analyzeRequest(basePair).getUrl().getHost()
+
+	for temps in self._payloads:
+		url = URL(proto,hostname,port,path+temps)
+		newRequest = self._helpers.buildHttpRequest(url)
+                attack = callbacks.makeHttpRequest(basePair.getHttpService(), newRequest)
+		resp_code = self._helpers.analyzeResponse(attack.getResponse()).getStatusCode()
+
+                if resp_code == 200:
+	                url = self._helpers.analyzeRequest(attack).getUrl()
+        	        print "Possible Source code disclosure!"
+                        if (url not in self._done):
+                            self._done.append(url)
+                            return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Source code disclosure', "The server contains temporary files.<p>", 'Certain', 'Low')]
+	
+
+# Detect php extract vulnerabilities
+# Technique based on https://davidnoren.com/2013/07/03/php-extract-vulnerability/
+class PhpExtract(IScannerCheck):
+    def __init__(self, callbacks):
+        self._helpers = callbacks.getHelpers()
+        self._done = getIssues('Code injection')
+
+    def doActiveScan(self, basePair, insertionPoint):
+        if self._helpers.analyzeRequest(basePair.getRequest()).getMethod() == "GET":
+                method = IParameter.PARAM_URL
+        else:
+                method = IParameter.PARAM_BODY
+
+        parameters = self._helpers.analyzeRequest(basePair.getRequest()).getParameters()
+	responseLength = len(basePair.getResponse()) # original response length
+
+        for parameter in parameters:
+            if parameter.getName() == insertionPoint.getInsertionPointName():
+		    p0 = "_SESSION[" + parameter.getName() + "]&_SESSION[admin]=true" # testing phase!
+
+                    newParam0 = self._helpers.buildParameter(p0,"true",method)
+                    newRequest0 = self._helpers.addParameter(basePair.getRequest(), newParam0)
+
+                    attack = callbacks.makeHttpRequest(basePair.getHttpService(), newRequest0)
+                    resp = self._helpers.bytesToString(attack.getResponse())
+
+                    if len(resp)  > (responseLength * 1.1): # trying to minimize false positives!
+                        url = self._helpers.analyzeRequest(attack).getUrl()
+                        print "Possible PHP _SESSION Vulnerability!"
+                        if (url not in self._done):
+                            self._done.append(url)
+                            return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Code injection', "The application appears to evaluate user input. PHP SESSION[] manipulation<p>", 'Certain', 'High')]
+
 # Detect php pcre code injection
 # Technique based on http://www.secalert.net/2013/12/13/ebay-remote-code-execution/
 class PhpPregArray(IScannerCheck):
@@ -185,7 +256,7 @@ class PhpPregArray(IScannerCheck):
 		    resp = self._helpers.bytesToString(attack.getResponse())
 		    if "Zend Scripting Language Engine" in resp:
 			url = self._helpers.analyzeRequest(attack).getUrl()
-			print "Vulnerability!"
+			print "Possible PHP code injection vulnerability!"
 			if (url not in self._done):
 			    self._done.append(url)
 			    return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Code injection', "The application appears to evaluate user input as code.<p>", 'Certain', 'High')]
