@@ -208,7 +208,7 @@ class PhpExtract(IScannerCheck):
 
         for parameter in parameters:
             if parameter.getName() == insertionPoint.getInsertionPointName():
-		    p0 = "_SESSION[" + parameter.getName() + "]&_SESSION[admin]=true" # testing phase!
+		    p0 = "_SESSION[" + parameter.getName() + "]&_SESSION[admin]" # testing phase!
 
                     newParam0 = self._helpers.buildParameter(p0,"true",method)
                     newRequest0 = self._helpers.addParameter(basePair.getRequest(), newParam0)
@@ -216,7 +216,7 @@ class PhpExtract(IScannerCheck):
                     attack = callbacks.makeHttpRequest(basePair.getHttpService(), newRequest0)
                     resp = self._helpers.bytesToString(attack.getResponse())
 
-                    if len(resp)  > (responseLength * 1.1): # trying to minimize false positives!
+                    if len(resp)  > (responseLength * 1.2): # trying to minimize false positives!
                         url = self._helpers.analyzeRequest(attack).getUrl()
                         print "Possible PHP _SESSION Vulnerability!"
                         if (url not in self._done):
