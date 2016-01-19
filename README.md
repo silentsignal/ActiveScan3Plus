@@ -1,7 +1,7 @@
 # ActiveScan3Plus
 Modified version of ActiveScan++ Burp Suite extension
 
-v1.1: 
+v1.1:
 The following new features were added:
  - Checking temporary files during  active scan e.g.: index.php, index.php~, index.php_orig, etc...
  - Basic PHP extract() vulnerability testing.
