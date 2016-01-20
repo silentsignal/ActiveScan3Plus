@@ -175,6 +175,8 @@ class CheckTempFiles(IScannerCheck):
         port = self._helpers.analyzeRequest(basePair).getUrl().getPort()
         proto = self._helpers.analyzeRequest(basePair).getUrl().getProtocol()
         hostname = self._helpers.analyzeRequest(basePair).getUrl().getHost()
+	if not '.' in path:
+		return None
 
 	for temps in self._payloads:
 		url = URL(proto,hostname,port,path+temps)
@@ -208,7 +210,7 @@ class PhpExtract(IScannerCheck):
 
         for parameter in parameters:
             if parameter.getName() == insertionPoint.getInsertionPointName():
-		    p0 = "_SESSION[" + parameter.getName() + "]&_SESSION[admin]" # testing phase!
+		    p0 = "_SESSION[admin]=true&_SESSION[" + parameter.getName() + "]" # testing phase!
 
                     newParam0 = self._helpers.buildParameter(p0,"true",method)
                     newRequest0 = self._helpers.addParameter(basePair.getRequest(), newParam0)
