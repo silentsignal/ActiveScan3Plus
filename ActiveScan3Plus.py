@@ -64,7 +64,7 @@ class BurpExtender(IBurpExtender, IScannerInsertionPointProvider):
 
 	callbacks.registerScannerCheck(UTF8Clrf(callbacks))
 
-#	callbacks.registerScannerInsertionPointProvider(self)
+	callbacks.registerScannerInsertionPointProvider(self)
 
         print "Successfully loaded ActiveScan3Plus v" + version
 
