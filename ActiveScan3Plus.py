@@ -30,7 +30,7 @@ except ImportError:
     print "Failed to load dependencies. This issue may be caused by using the unstable Jython 2.7 beta."
 
 
-version = "1.1"
+version = "1.2"
 callbacks = None
 
 
@@ -62,7 +62,9 @@ class BurpExtender(IBurpExtender, IScannerInsertionPointProvider):
 	
 	callbacks.registerScannerCheck(CheckTempFiles(callbacks))
 
-	callbacks.registerScannerInsertionPointProvider(self)
+	callbacks.registerScannerCheck(UTF8Clrf(callbacks))
+
+#	callbacks.registerScannerInsertionPointProvider(self)
 
         print "Successfully loaded ActiveScan3Plus v" + version
 
@@ -218,7 +220,7 @@ class PhpExtract(IScannerCheck):
                     attack = callbacks.makeHttpRequest(basePair.getHttpService(), newRequest0)
                     resp = self._helpers.bytesToString(attack.getResponse())
 
-                    if len(resp)  > (responseLength * 1.2): # trying to minimize false positives!
+                    if len(resp)  > (responseLength * 1.5): # trying to minimize false positives!
                         url = self._helpers.analyzeRequest(attack).getUrl()
                         print "Possible PHP _SESSION Vulnerability!"
                         if (url not in self._done):
@@ -231,7 +233,7 @@ class PhpPregArray(IScannerCheck):
     def __init__(self, callbacks):
         self._helpers = callbacks.getHelpers()
         self._done = getIssues('Code injection')
-        self._payloads = "{${phpcredits()}}"
+        self._payloads = "{${phpcredits()}}" # TODO: blind injection!
 
     def doActiveScan(self, basePair, insertionPoint):
 	if self._helpers.analyzeRequest(basePair.getRequest()).getMethod() == "GET":
@@ -294,6 +296,36 @@ class UTF8Xss(IScannerCheck):
 				if (url not in self._done):
 				    self._done.append(url)
 				    return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Cross-site scripting', "The application appears to evaluate user input.<p>", 'Firm', 'High')]
+# Detect unicode CRLF attacks
+class UTF8Clrf(IScannerCheck):
+    def __init__(self, callbacks):
+        self._helpers = callbacks.getHelpers()
+        self._done = getIssues('HTTP response header injection')
+        self._payloads = ['%E5%98%8A%E5%98%8DSet-Cookie:%20abrakadabra']
+
+    def doActiveScan(self, basePair, insertionPoint):
+	if self._helpers.analyzeRequest(basePair.getRequest()).getMethod() == 'GET':
+		method = IParameter.PARAM_URL
+	else:
+		method = IParameter.PARAM_BODY
+	
+        parameters = self._helpers.analyzeRequest(basePair.getRequest()).getParameters()
+	
+	for parameter in parameters:
+            if parameter.getName() == insertionPoint.getInsertionPointName():
+		    for clrf in self._payloads:
+			    newRequest = self._helpers.removeParameter(basePair.getRequest(), parameter)
+		    	    newParam = self._helpers.buildParameter(parameter.getName(),clrf,method)
+		    	    newRequest = self._helpers.addParameter(newRequest, newParam)
+
+			    attack = callbacks.makeHttpRequest(basePair.getHttpService(), newRequest)
+			    resp = self._helpers.analyzeResponse(attack.getResponse()).getHeaders()
+			    for injection in resp:
+			    	if 'Set-Cookie: abrakadabra' in injection:
+					url = self._helpers.analyzeRequest(attack).getUrl()
+					if (url not in self._done):
+					    self._done.append(url)
+					    return [CustomScanIssue(attack.getHttpService(), url, [attack], 'HTTP response header injection', "The application appears to evaluate user input.<p>", 'Firm', 'High')]
 # Detect CVE-2015-2080
 # Technique based on https://github.com/GDSSecurity/Jetleak-Testing-Script/blob/master/jetleak_tester.py
 class JetLeak(IScannerCheck):

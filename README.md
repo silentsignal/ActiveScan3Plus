@@ -1,6 +1,9 @@
 # ActiveScan3Plus
 Modified version of ActiveScan++ Burp Suite extension
 
+v1.2:
+New scanning engine was added UTF8 CRLF injection
+
 v1.1:
 The following new features were added:
  - Checking temporary files during  active scan e.g.: index.php, index.php~, index.php_orig, etc...
