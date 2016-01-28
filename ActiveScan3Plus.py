@@ -30,9 +30,9 @@ except ImportError:
     print "Failed to load dependencies. This issue may be caused by using the unstable Jython 2.7 beta."
 
 
-version = "1.2"
+version = "1.3.1"
 callbacks = None
-
+check = 1
 
 class BurpExtender(IBurpExtender, IScannerInsertionPointProvider):
     def registerExtenderCallbacks(self, this_callbacks):
@@ -64,17 +64,19 @@ class BurpExtender(IBurpExtender, IScannerInsertionPointProvider):
 
 	callbacks.registerScannerCheck(UTF8Clrf(callbacks))
 
+	callbacks.registerScannerCheck(RoRCheck(callbacks))
+
 	callbacks.registerScannerInsertionPointProvider(self)
 
         print "Successfully loaded ActiveScan3Plus v" + version
 
         return
 
-# Perl DBI->quote() bypass
-# Technique based on Netanel Rubin: The Perl Jam: Exploiting a 20 Year-old Vulnerability
     def getInsertionPoints(self, baseRequestResponse):
 
         # Handle only CGI and PL extensions
+	global check 
+	check = 1
         path = self._helpers.analyzeRequest(baseRequestResponse).getUrl().getPath()
 	parameters = self._helpers.analyzeRequest(baseRequestResponse.getRequest()).getParameters()
         if '.' in path:
@@ -87,6 +89,8 @@ class BurpExtender(IBurpExtender, IScannerInsertionPointProvider):
 	else:
         	return [ InsertionPoint_Drupal(self._helpers, baseRequestResponse.getRequest(), parameter) for parameter in parameters ]
 
+# Perl DBI->quote() bypass
+# Technique based on Netanel Rubin: The Perl Jam: Exploiting a 20 Year-old Vulnerability
 class InsertionPoint_Perl(IScannerInsertionPoint):
 
     def __init__(self, helpers, baseRequest, dataParameter):
@@ -146,10 +150,16 @@ class InsertionPoint_Drupal(IScannerInsertionPoint):
     def buildRequest(self, payload):
         # build the raw data using the specified payload
         input = self._insertionPointPrefix + self._helpers.urlEncode(self._helpers.bytesToString(payload)) + self._insertionPointSuffix;
-                
+        
         # update the request with the new parameter value
 	newRequest = self._helpers.removeParameter(self._baseRequest, self._dataParameter)
-        return self._helpers.updateParameter(newRequest, self._helpers.buildParameter(self._baseValue, input, IParameter.PARAM_URL if self._helpers.analyzeRequest(newRequest).getMethod() == 'GET' else  IParameter.PARAM_BODY))
+	if(self._helpers.analyzeRequest(newRequest).getMethod() == 'GET' and self._dataParameter.getType() == 0):
+		method = IParameter.PARAM_URL
+	elif(self._helpers.analyzeRequest(newRequest).getMethod() == 'POST' and self._dataParameter.getType() == 1):
+		method = IParameter.PARAM_BODY
+	else:
+		return None
+        return self._helpers.updateParameter(newRequest, self._helpers.buildParameter(self._baseValue, input, method))
 
     def getPayloadOffsets(self, payload):
         # since the payload is being inserted into a serialized data structure, there aren't any offsets 
@@ -168,6 +178,10 @@ class CheckTempFiles(IScannerCheck):
 	self._payloads = ["~","_ORIG","_orig","_old",".tar",".rar",".zip",".txt",".old",".bak",".tar.gz",".bck"]
 
     def doActiveScan(self, basePair, insertionPoint):
+	global check
+	if check == 0:
+		return None
+
         if self._helpers.analyzeRequest(basePair.getRequest()).getMethod() == "GET":
                 method = IParameter.PARAM_URL
         else:
@@ -191,8 +205,45 @@ class CheckTempFiles(IScannerCheck):
         	        print "Possible Source code disclosure!"
                         if (url not in self._done):
                             self._done.append(url)
-                            return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Source code disclosure', "The server contains temporary files.<p>", 'Certain', 'Low')]
+                            return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Source code disclosure', "The server contains temporary files.<p>", 'Tentative', 'Low')]
 	
+# Ruby on rails attacks
+# Starting point: http://www.phrack.org/papers/attacking_ruby_on_rails.html
+class RoRCheck(IScannerCheck):
+    def __init__(self, callbacks):
+        self._helpers = callbacks.getHelpers()
+        self._done = getIssues('Code injection')
+
+    def doActiveScan(self, basePair, insertionPoint):
+	global check
+	if check == 0:
+		return None
+	check = 0
+        if self._helpers.analyzeRequest(basePair.getRequest()).getMethod() == "GET":
+                method = IParameter.PARAM_URL
+        else:
+                method = IParameter.PARAM_BODY
+
+        parameters = self._helpers.analyzeRequest(basePair.getRequest()).getParameters()
+	responseLength = len(basePair.getResponse()) # original response length
+
+        for parameter in parameters:
+            if parameter.getName() == insertionPoint.getInsertionPointName():
+		    p0 = parameter.getName() + "[inline]" # testing phase!
+		    
+		    newRequest0 = self._helpers.removeParameter(basePair.getRequest(), parameter)
+                    newParam0 = self._helpers.buildParameter(p0,"<%=`id`%>",method)
+		    newRequest0 = self._helpers.addParameter(newRequest0, newParam0)
+
+                    attack = callbacks.makeHttpRequest(basePair.getHttpService(), newRequest0)
+                    resp = self._helpers.bytesToString(attack.getResponse())
+
+                    if ("uid=" in resp) and ("gid=" in resp):
+                        url = self._helpers.analyzeRequest(attack).getUrl()
+                        print "Possible Ruby on Rails vulnerability!"
+                        if (url not in self._done):
+                            self._done.append(url)
+                            return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Code injection', "The application appears to evaluate user input. Ruby on Rails command injection.<p>", 'Tentative', 'High')]
 
 # Detect php extract vulnerabilities
 # Technique based on https://davidnoren.com/2013/07/03/php-extract-vulnerability/
@@ -202,6 +253,10 @@ class PhpExtract(IScannerCheck):
         self._done = getIssues('Code injection')
 
     def doActiveScan(self, basePair, insertionPoint):
+	global check
+	if check == 0:
+		return None
+
         if self._helpers.analyzeRequest(basePair.getRequest()).getMethod() == "GET":
                 method = IParameter.PARAM_URL
         else:
@@ -225,7 +280,7 @@ class PhpExtract(IScannerCheck):
                         print "Possible PHP _SESSION Vulnerability!"
                         if (url not in self._done):
                             self._done.append(url)
-                            return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Code injection', "The application appears to evaluate user input. PHP SESSION[] manipulation<p>", 'Certain', 'High')]
+                            return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Code injection', "The application appears to evaluate user input. PHP SESSION[] manipulation<p>", 'Tentative', 'High')]
 
 # Detect php pcre code injection
 # Technique based on http://www.secalert.net/2013/12/13/ebay-remote-code-execution/
@@ -236,6 +291,10 @@ class PhpPregArray(IScannerCheck):
         self._payloads = "{${phpcredits()}}" # TODO: blind injection!
 
     def doActiveScan(self, basePair, insertionPoint):
+	global check
+	if check == 0:
+		return None
+
 	if self._helpers.analyzeRequest(basePair.getRequest()).getMethod() == "GET":
 		method = IParameter.PARAM_URL
 	else:
@@ -271,9 +330,13 @@ class UTF8Xss(IScannerCheck):
     def __init__(self, callbacks):
         self._helpers = callbacks.getHelpers()
         self._done = getIssues('Cross-site scripting')
-        self._payloads = ['%uff1cscript%uff1ealert(1)%uff1c/script%uff1e','<%00script>alert(1)<%00/script>','%C0%BCscript%C0%BEalert(1)%C0%BC/script%C0%BE','%EF%BC%9Cscript%EF%BC%9Ealert(1)%EF%BC%9C/script%EF%BC%9E','\\u003cscript\\u003ealert(1)\\u003c\\u002fscript\\u003e','%uff1ch1%uff1eabrakadabra(1)%uff1c/h1%uff1e','<%00h1>abrakadabra(1)<%00/h1>','%C0%BCh1%C0%BEabrakadabra(1)%C0%BC/h1%C0%BE','%EF%BC%9Ch1%EF%BC%9Eabrakadabra(1)%EF%BC%9C/h1%EF%BC%9E','\\u003ch1\\u003eabrakadabra(1)\\u003c\\u002fh1\\u003e']
+        self._payloads = ['%uff1cscript%uff1ealert(1)%uff1c/script%uff1e','<%00script>alert(1)<%00/script>','%C0%BCscript%C0%BEalert(1)%C0%BC/script%C0%BE','%EF%BC%9Cscript%EF%BC%9Ealert(1)%EF%BC%9C/script%EF%BC%9E','\\u003cscript\\u003ealert(1)\\u003c\\u002fscript\\u003e','%uff1ch1%uff1eabrakadabra(1)%uff1c/h1%uff1e','<%00h1>abrakadabra(1)<%00/h1>','%C0%BCh1%C0%BEabrakadabra(1)%C0%BC/h1%C0%BE','%EF%BC%9Ch1%EF%BC%9Eabrakadabra(1)%EF%BC%9C/h1%EF%BC%9E','\\u003ch1\\u003eabrakadabra(1)\\u003c\\u002fh1\\u003e','javascript%3A%2F%2F"><script>alert(1)</script>','javascript%3A%2F%2F"><script>abrakadabra(1)</script>','javascript:alert(1)/*\\nhttp://abrakadabra.com/','javascript:%0Aalert(1)/*\\nhttp://abrakadabra.com/','javascript:%3A%2F%2Falert(1)/*\\nhttp://abrakadabra.com/']
 
     def doActiveScan(self, basePair, insertionPoint):
+	global check
+	if check == 0:
+		return None
+
 	if self._helpers.analyzeRequest(basePair.getRequest()).getMethod() == 'GET':
 		method = IParameter.PARAM_URL
 	else:
@@ -304,6 +367,10 @@ class UTF8Clrf(IScannerCheck):
         self._payloads = ['%E5%98%8A%E5%98%8DSet-Cookie:%20abrakadabra']
 
     def doActiveScan(self, basePair, insertionPoint):
+	global check
+	if check == 0:
+		return None
+
 	if self._helpers.analyzeRequest(basePair.getRequest()).getMethod() == 'GET':
 		method = IParameter.PARAM_URL
 	else:
@@ -333,6 +400,10 @@ class JetLeak(IScannerCheck):
         self._helpers = callbacks.getHelpers()
 
     def doActiveScan(self, basePair, insertionPoint):
+	global check
+	if check == 0:
+		return None
+
         if 'Referer' != insertionPoint.getInsertionPointName():
             return None
         attack = callbacks.makeHttpRequest(basePair.getHttpService(), insertionPoint.buildRequest("\x00"))
@@ -384,8 +455,11 @@ class CodeExec(IScannerCheck):
             'aspx': 'any',
         }
 
-
     def doActiveScan(self, basePair, insertionPoint):
+	global check
+	if check == 0:
+		return None
+
         if (insertionPoint.getInsertionPointName() == "hosthacker"):
             return None
 
@@ -490,6 +564,9 @@ class HostAttack(IScannerInsertionPointProvider, IScannerCheck):
 
 
     def doActiveScan(self, basePair, insertionPoint):
+	global check
+	if check == 0:
+		return None
 
         # Return if the insertion point isn't the right one
         if (insertionPoint.getInsertionPointName() != "hosthacker"):
