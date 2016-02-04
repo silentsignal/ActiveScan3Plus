@@ -30,7 +30,7 @@ except ImportError:
     print "Failed to load dependencies. This issue may be caused by using the unstable Jython 2.7 beta."
 
 
-version = "1.3.1"
+version = "1.3.2"
 callbacks = None
 check = 1
 
@@ -228,7 +228,7 @@ class RoRCheck(IScannerCheck):
 	responseLength = len(basePair.getResponse()) # original response length
 
         for parameter in parameters:
-            if parameter.getName() == insertionPoint.getInsertionPointName():
+            if parameter.getType() in [0,1]:
 		    p0 = parameter.getName() + "[inline]" # testing phase!
 		    
 		    newRequest0 = self._helpers.removeParameter(basePair.getRequest(), parameter)
@@ -266,7 +266,7 @@ class PhpExtract(IScannerCheck):
 	responseLength = len(basePair.getResponse()) # original response length
 
         for parameter in parameters:
-            if parameter.getName() == insertionPoint.getInsertionPointName():
+            if parameter.getType() in [0,1]:
 		    p0 = "_SESSION[admin]=true&_SESSION[" + parameter.getName() + "]" # testing phase!
 
                     newParam0 = self._helpers.buildParameter(p0,"true",method)
@@ -303,7 +303,8 @@ class PhpPregArray(IScannerCheck):
         parameters = self._helpers.analyzeRequest(basePair.getRequest()).getParameters()
 	
 	for parameter in parameters:
-            if parameter.getName() == insertionPoint.getInsertionPointName():
+	    print "Parameter: " + parameter.getName()
+            if parameter.getType() in [0,1]:
 		    p0 = parameter.getName() + "[0]"
 		    p1 = parameter.getName() + "[1]"
 
@@ -345,7 +346,7 @@ class UTF8Xss(IScannerCheck):
         parameters = self._helpers.analyzeRequest(basePair.getRequest()).getParameters()
 	
 	for parameter in parameters:
-            if parameter.getName() == insertionPoint.getInsertionPointName():
+            if parameter.getType() in [0,1]:
 		    for xss in self._payloads:
 			    newRequest = self._helpers.removeParameter(basePair.getRequest(), parameter)
 		    	    newParam = self._helpers.buildParameter(parameter.getName(),xss,method)
@@ -379,7 +380,7 @@ class UTF8Clrf(IScannerCheck):
         parameters = self._helpers.analyzeRequest(basePair.getRequest()).getParameters()
 	
 	for parameter in parameters:
-            if parameter.getName() == insertionPoint.getInsertionPointName():
+            if parameter.getType() in [0,1]:
 		    for clrf in self._payloads:
 			    newRequest = self._helpers.removeParameter(basePair.getRequest(), parameter)
 		    	    newParam = self._helpers.buildParameter(parameter.getName(),clrf,method)
