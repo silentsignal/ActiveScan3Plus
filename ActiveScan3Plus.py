@@ -30,7 +30,7 @@ except ImportError:
     print "Failed to load dependencies. This issue may be caused by using the unstable Jython 2.7 beta."
 
 
-version = "1.3.2"
+version = "1.3.3"
 callbacks = None
 check = 1
 
@@ -63,6 +63,8 @@ class BurpExtender(IBurpExtender, IScannerInsertionPointProvider):
 	callbacks.registerScannerCheck(CheckTempFiles(callbacks))
 
 	callbacks.registerScannerCheck(UTF8Clrf(callbacks))
+
+	callbacks.registerScannerCheck(ELInjection(callbacks))
 
 	callbacks.registerScannerCheck(RoRCheck(callbacks))
 
@@ -303,7 +305,6 @@ class PhpPregArray(IScannerCheck):
         parameters = self._helpers.analyzeRequest(basePair.getRequest()).getParameters()
 	
 	for parameter in parameters:
-	    print "Parameter: " + parameter.getName()
             if parameter.getType() in [0,1]:
 		    p0 = parameter.getName() + "[0]"
 		    p1 = parameter.getName() + "[1]"
@@ -394,6 +395,43 @@ class UTF8Clrf(IScannerCheck):
 					if (url not in self._done):
 					    self._done.append(url)
 					    return [CustomScanIssue(attack.getHttpService(), url, [attack], 'HTTP response header injection', "The application appears to evaluate user input.<p>", 'Firm', 'High')]
+
+# Detect ELInjection
+# https://www.mindedsecurity.com/fileshare/ExpressionLanguageInjection.pdf
+class ELInjection(IScannerCheck):
+    def __init__(self, callbacks):
+        self._helpers = callbacks.getHelpers()
+        self._done = getIssues('Code injection')
+        self._payloads = ['${1234*4321}']
+
+    def doActiveScan(self, basePair, insertionPoint):
+	global check
+	if check == 0:
+		return None
+
+	if self._helpers.analyzeRequest(basePair.getRequest()).getMethod() == 'GET':
+		method = IParameter.PARAM_URL
+	else:
+		method = IParameter.PARAM_BODY
+	
+        parameters = self._helpers.analyzeRequest(basePair.getRequest()).getParameters()
+	
+	for parameter in parameters:
+            if parameter.getType() in [0,1]:
+		    for eli in self._payloads:
+			    newRequest = self._helpers.removeParameter(basePair.getRequest(), parameter)
+		    	    newParam = self._helpers.buildParameter(parameter.getName(),eli,method)
+		    	    newRequest = self._helpers.addParameter(newRequest, newParam)
+
+			    attack = callbacks.makeHttpRequest(basePair.getHttpService(), newRequest)
+			    resp = self._helpers.analyzeResponse(attack.getResponse()).getHeaders()
+			    for injection in resp:
+			    	if '5332114' in injection:
+					url = self._helpers.analyzeRequest(attack).getUrl()
+					if (url not in self._done):
+					    self._done.append(url)
+					    return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Code injection', "The application appears to evaluate user input as code.<p>", 'Certain', 'High')]
+
 # Detect CVE-2015-2080
 # Technique based on https://github.com/GDSSecurity/Jetleak-Testing-Script/blob/master/jetleak_tester.py
 class JetLeak(IScannerCheck):
@@ -401,9 +439,6 @@ class JetLeak(IScannerCheck):
         self._helpers = callbacks.getHelpers()
 
     def doActiveScan(self, basePair, insertionPoint):
-	global check
-	if check == 0:
-		return None
 
         if 'Referer' != insertionPoint.getInsertionPointName():
             return None
@@ -457,9 +492,6 @@ class CodeExec(IScannerCheck):
         }
 
     def doActiveScan(self, basePair, insertionPoint):
-	global check
-	if check == 0:
-		return None
 
         if (insertionPoint.getInsertionPointName() == "hosthacker"):
             return None
@@ -565,9 +597,6 @@ class HostAttack(IScannerInsertionPointProvider, IScannerCheck):
 
 
     def doActiveScan(self, basePair, insertionPoint):
-	global check
-	if check == 0:
-		return None
 
         # Return if the insertion point isn't the right one
         if (insertionPoint.getInsertionPointName() != "hosthacker"):
