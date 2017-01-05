@@ -360,7 +360,7 @@ class UTF8Xss(IScannerCheck):
 				url = self._helpers.analyzeRequest(attack).getUrl()
 				if (url not in self._done):
 				    self._done.append(url)
-				    return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Cross-site scripting', "The application appears to evaluate user input.<p>", 'Firm', 'High')]
+				    return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Cross-site scripting', "The application appears to evaluate user input.<p>", 'Tentative', 'High')]
 # Detect unicode CRLF attacks
 class UTF8Clrf(IScannerCheck):
     def __init__(self, callbacks):
@@ -402,7 +402,7 @@ class ELInjection(IScannerCheck):
     def __init__(self, callbacks):
         self._helpers = callbacks.getHelpers()
         self._done = getIssues('Code injection')
-        self._payloads = ['${1234*4321}']
+        self._payloads = ['${1234*4321}','{{1234*4321}}']
 
     def doActiveScan(self, basePair, insertionPoint):
 	global check
@@ -417,20 +417,21 @@ class ELInjection(IScannerCheck):
         parameters = self._helpers.analyzeRequest(basePair.getRequest()).getParameters()
 	
 	for parameter in parameters:
-            if parameter.getType() in [0,1]:
-		    for eli in self._payloads:
-			    newRequest = self._helpers.removeParameter(basePair.getRequest(), parameter)
-		    	    newParam = self._helpers.buildParameter(parameter.getName(),eli,method)
-		    	    newRequest = self._helpers.addParameter(newRequest, newParam)
+	    print "Param: " + str(parameter.getType())
+#            if parameter.getType() in [0,1,6]:
+	    for eli in self._payloads:
+		    newRequest = self._helpers.removeParameter(basePair.getRequest(), parameter)
+	    	    newParam = self._helpers.buildParameter(parameter.getName(),eli,method)
+	    	    newRequest = self._helpers.addParameter(newRequest, newParam)
 
-			    attack = callbacks.makeHttpRequest(basePair.getHttpService(), newRequest)
-			    resp = self._helpers.analyzeResponse(attack.getResponse()).getHeaders()
-			    for injection in resp:
-			    	if '5332114' in injection:
-					url = self._helpers.analyzeRequest(attack).getUrl()
-					if (url not in self._done):
-					    self._done.append(url)
-					    return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Code injection', "The application appears to evaluate user input as code.<p>", 'Certain', 'High')]
+		    attack = callbacks.makeHttpRequest(basePair.getHttpService(), newRequest)
+		    resp = self._helpers.analyzeResponse(attack.getResponse()).getHeaders()
+		    for injection in resp:
+		    	if '5332114' in injection:
+				url = self._helpers.analyzeRequest(attack).getUrl()
+				if (url not in self._done):
+				    self._done.append(url)
+				    return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Code injection', "The application appears to evaluate user input as code.<p>", 'Certain', 'High')]
 
 # Detect CVE-2015-2080
 # Technique based on https://github.com/GDSSecurity/Jetleak-Testing-Script/blob/master/jetleak_tester.py
