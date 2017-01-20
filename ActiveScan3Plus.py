@@ -293,38 +293,38 @@ class PhpPregArray(IScannerCheck):
         self._payloads = "{${phpcredits()}}" # TODO: blind injection!
 
     def doActiveScan(self, basePair, insertionPoint):
-	global check
-	if check == 0:
-		return None
+        global check
+        if check == 0:
+            return None
 
-	if self._helpers.analyzeRequest(basePair.getRequest()).getMethod() == "GET":
-		method = IParameter.PARAM_URL
-	else:
-		method = IParameter.PARAM_BODY
-	
+        if self._helpers.analyzeRequest(basePair.getRequest()).getMethod() == "GET":
+            method = IParameter.PARAM_URL
+        else:
+            method = IParameter.PARAM_BODY
+
         parameters = self._helpers.analyzeRequest(basePair.getRequest()).getParameters()
-	
-	for parameter in parameters:
+
+        for parameter in parameters:
             if parameter.getType() in [0,1]:
-		    p0 = parameter.getName() + "[0]"
-		    p1 = parameter.getName() + "[1]"
+                p0 = parameter.getName() + "[0]"
+                p1 = parameter.getName() + "[1]"
 
-		    newRequest0 = self._helpers.removeParameter(basePair.getRequest(), parameter)
+                newRequest0 = self._helpers.removeParameter(basePair.getRequest(), parameter)
 
-		    newParam0 = self._helpers.buildParameter(p0,"search",method)
-		    newParam1 = self._helpers.buildParameter(p1,self._payloads,method)
+                newParam0 = self._helpers.buildParameter(p0,"search",method)
+                newParam1 = self._helpers.buildParameter(p1,self._payloads,method)
 
-		    newRequest0 = self._helpers.addParameter(newRequest0, newParam0)
-		    newRequest0 = self._helpers.addParameter(newRequest0, newParam1)
-		    
-		    attack = callbacks.makeHttpRequest(basePair.getHttpService(), newRequest0)
-		    resp = self._helpers.bytesToString(attack.getResponse())
-		    if "Zend Scripting Language Engine" in resp:
-			url = self._helpers.analyzeRequest(attack).getUrl()
-			print "Possible PHP code injection vulnerability!"
-			if (url not in self._done):
-			    self._done.append(url)
-			    return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Code injection', "The application appears to evaluate user input as code.<p>", 'Certain', 'High')]
+                newRequest0 = self._helpers.addParameter(newRequest0, newParam0)
+                newRequest0 = self._helpers.addParameter(newRequest0, newParam1)
+
+                attack = callbacks.makeHttpRequest(basePair.getHttpService(), newRequest0)
+                resp = self._helpers.bytesToString(attack.getResponse())
+                if "Zend Scripting Language Engine" in resp:
+                    url = self._helpers.analyzeRequest(attack).getUrl()
+                    print "Possible PHP code injection vulnerability!"
+                    if (url not in self._done):
+                        self._done.append(url)
+                        return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Code injection', "The application appears to evaluate user input as code.<p>", 'Certain', 'High')]
 
 # Detect UTF8 encoded XSS (ValidateReqest bypass) and other validation bypass mechanisms
 # Technique based on http://www.jardinesoftware.net/2011/07/17/bypassing-validaterequest/ and some additional checks
