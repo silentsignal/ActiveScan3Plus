@@ -248,7 +248,7 @@ class RoRCheck(IScannerCheck):
                             return [CustomScanIssue(attack.getHttpService(), url, [attack], 'Code injection', "The application appears to evaluate user input. Ruby on Rails command injection.<p>", 'Tentative', 'High')]
 
 # Detect php extract vulnerabilities
-# Technique based on https://davidnoren.com/2013/07/03/php-extract-vulnerability/
+# Technique based on https://davidnoren.com/post/php-extract-vulnerability.html
 class PhpExtract(IScannerCheck):
     def __init__(self, callbacks):
         self._helpers = callbacks.getHelpers()
