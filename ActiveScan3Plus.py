@@ -389,7 +389,7 @@ class UTF8Clrf(IScannerCheck):
     def __init__(self, callbacks):
         self._helpers = callbacks.getHelpers()
         self._done = getIssues('HTTP response header injection')
-        self._payloads = ['%E5%98%8A%E5%98%8DSet-Cookie:%20abrakadabra']
+        self._payloads = ['%E5%98%8A%E5%98%8DSet-Cookie:%20abrakadabra','%0d+Set-cookie:+abrakadabra','%0d%09Set-cookie:%20abrakadabra','%0d%0a%09Set-cookie:%20abrakadabra']
 
     def doActiveScan(self, basePair, insertionPoint):
 	global check
